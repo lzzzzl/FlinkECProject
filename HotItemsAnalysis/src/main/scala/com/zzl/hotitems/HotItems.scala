@@ -1,6 +1,7 @@
 package com.zzl.hotitems
 
 import org.apache.flink.api.common.functions.AggregateFunction
+import org.apache.flink.api.common.serialization.SimpleStringSchema
 import org.apache.flink.api.common.state.{ListState, ListStateDescriptor}
 import org.apache.flink.api.java.tuple.{Tuple, Tuple1}
 import org.apache.flink.configuration.Configuration
@@ -10,9 +11,11 @@ import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.api.scala.function.WindowFunction
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer
 import org.apache.flink.util.Collector
 
 import java.sql.Timestamp
+import java.util.Properties
 import scala.collection.mutable.ListBuffer
 
 
@@ -28,6 +31,15 @@ object HotItems {
     env.setParallelism(1)
     // 定义事件时间语义
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
+
+//    // 从kafka中读取数据
+//    val properties = new Properties()
+//    properties.setProperty("bootstrap.servers", "localhost:9092")
+//    properties.setProperty("group.id", "consumer-group")
+//    properties.setProperty("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
+//    properties.setProperty("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
+//
+//    val inputStream = env.addSource(new FlinkKafkaConsumer[String]("hotitems", new SimpleStringSchema(), properties))
 
     // 从文件中读取数据，并转换成样例类，提取时间戳生成watermark
     val inputStream = env.readTextFile("/Users/zhengzonglin/IdeaProjects/FlinkDemo/HotItemsAnalysis/src/main/resources/UserBehavior.csv")
