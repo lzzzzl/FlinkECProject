@@ -37,7 +37,7 @@ object AdClickAnalysis {
     // 插入一步过滤操作，并将有刷单行为的用户输出到侧输出流（黑名单报警）
     val filterBlackListUserStream: DataStream[AdClickLog] = adLogStream
       .keyBy(data => (data.userId, data.adId))
-      .process(new FilterBlackListUserResult())
+      .process(new FilterBlackListUserResult(100))
 
     // 开窗聚合统计
     val adCountResultStream = filterBlackListUserStream
@@ -74,7 +74,7 @@ class FilterBlackListUserResult(maxCount: Long) extends KeyedProcessFunction[(Lo
   lazy val resetTimerTsState: ValueState[Long] = getRuntimeContext.getState(new ValueStateDescriptor[Long]("reset-ts", classOf[Long]))
   lazy val isBlackState: ValueState[Boolean] = getRuntimeContext.getState(new ValueStateDescriptor[Boolean]("is-black", classOf[Boolean]))
 
-  override def processElement(i: AdClickLog, ctx: KeyedProcessFunction[(Long, Long), AdClickLog, AdClickLog]#Context, collector: Collector[AdClickLog]): Unit = {
+  override def processElement(value: AdClickLog, ctx: KeyedProcessFunction[(Long, Long), AdClickLog, AdClickLog]#Context, out: Collector[AdClickLog]): Unit = {
     val curCount = countState.value()
 
     // 判断只要是第一个数据来了，直接注册0点的清空状态定时器
@@ -84,6 +84,26 @@ class FilterBlackListUserResult(maxCount: Long) extends KeyedProcessFunction[(Lo
       ctx.timerService().registerProcessingTimeTimer(ts)
     }
 
+    // 判断count值是否已经达到定义的阈值，如果超过就输出到黑名单
+    if (curCount >= maxCount) {
+      // 判断是否已经在黑名单里面，没有的话才输出侧输出流
+      if (!isBlackState.value()) {
+        isBlackState.update(true)
+        ctx.output(new OutputTag[BlackListUserWarning]("warning"), BlackListUserWarning(value.userId, value.adId,
+          "Click ad over " + maxCount + " times today."))
+      }
+      return
+    }
 
+    // 正常情况，count + 1，然后将数据原样输出
+    countState.update(curCount + 1)
+    out.collect(value)
+  }
+
+  override def onTimer(timestamp: Long, ctx: KeyedProcessFunction[(Long, Long), AdClickLog, AdClickLog]#OnTimerContext, out: Collector[AdClickLog]): Unit = {
+     if (timestamp == resetTimerTsState.value()) {
+       isBlackState.clear()
+       countState.clear()
+     }
   }
 }
